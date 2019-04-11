@@ -39,11 +39,13 @@ public class SyncSystemClipboard implements ClipboardOwner {
         SyncSystemClipboard syncSystemClipboard = new SyncSystemClipboard();
 
         System.out.println("Initializing receive client ...");
-        syncSystemClipboard.initClient();
+
+        new Thread(() -> syncSystemClipboard.initClient()).start();
         System.out.println("Initializing receive client success.");
 
+        new Thread(() -> syncSystemClipboard.initSocketServer()).start();
+
         System.out.println("Initializing socket server on port " + PORT);
-        syncSystemClipboard.initSocketServer();
     }
 
     @Override
@@ -107,9 +109,11 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
     private void initSocketServer() {
         try (ServerSocket serverSocket = new ServerSocket(4396)) {
-            try (Socket socket = serverSocket.accept()) {
-                byte[] bytes = this.getBytes(socket.getInputStream());
-                this.pasteToClipboard(bytes);
+            while (true) {
+                try (Socket socket = serverSocket.accept()) {
+                    byte[] bytes = this.getBytes(socket.getInputStream());
+                    this.pasteToClipboard(bytes);
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
