@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.Charset;
 
 /**
  * @author lihaodi
@@ -90,7 +91,7 @@ public class SyncSystemClipboard implements ClipboardOwner {
                 DataOutputStream dataOutputStream = new DataOutputStream(outputStream);
 
                 if (o instanceof String) {
-                    dataOutputStream.write(((String) o).getBytes());
+                    dataOutputStream.write(((String) o).getBytes(Charset.forName("UTF-8")));
                 }
 
                 if (o instanceof ImageTransferable) {
@@ -147,7 +148,7 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
                 System.out.println("Receive Screenshot : " + transferable);
             } else {
-                transferable = new StringSelection(new String(bytes));
+                transferable = new StringSelection(new String(bytes, Charset.forName("UTF-8")));
 
                 System.out.println("Receive Text : " + transferable.getTransferData(DataFlavor.stringFlavor));
             }
