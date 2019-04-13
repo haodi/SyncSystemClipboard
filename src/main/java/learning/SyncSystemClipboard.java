@@ -20,6 +20,8 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.Charset;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author lihaodi
@@ -39,14 +41,32 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
         SyncSystemClipboard syncSystemClipboard = new SyncSystemClipboard();
 
-        System.out.println("Initializing receive client ...");
+        String osName = System.getProperty("os.name");
 
-        new Thread(() -> syncSystemClipboard.initClient()).start();
-        System.out.println("Initializing receive client success.");
+        System.out.println("Current OS :" + osName);
 
-        new Thread(() -> syncSystemClipboard.initSocketServer()).start();
+        // Mac系统通过定时的方式同步剪贴板（ClipboardOwner再Mac系统下不工作）
+        if (osName.startsWith("Mac")) {
+            Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+                Transferable transferable = syncSystemClipboard.clipboard.getContents(DataFlavor.stringFlavor);
+                if (transferable == null) {
+                    transferable = syncSystemClipboard.clipboard.getContents(DataFlavor.imageFlavor);
+                }
 
-        System.out.println("Initializing socket server on port " + PORT);
+                if (transferable != null) {
+                    syncSystemClipboard.lostOwnership(syncSystemClipboard.clipboard, transferable);
+                }
+            }, 0, 1000, TimeUnit.MILLISECONDS);
+        } else {
+            System.out.println("Initializing receive client ...");
+
+            new Thread(() -> syncSystemClipboard.initClient()).start();
+            System.out.println("Initializing receive client success.");
+
+            new Thread(() -> syncSystemClipboard.initSocketServer()).start();
+
+            System.out.println("Initializing socket server on port " + PORT);
+        }
     }
 
     @Override
