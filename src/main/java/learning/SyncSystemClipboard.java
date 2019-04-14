@@ -40,6 +40,8 @@ public class SyncSystemClipboard implements ClipboardOwner {
     private Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
     private Object lastClipboard = null;
 
+    private boolean fromOtherOS = false;
+
     public static void main(String[] args) {
         if (args.length > 0) {
             IP = args[0];
@@ -71,6 +73,11 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
     @Override
     public void lostOwnership(Clipboard clipboard, Transferable contents) {
+        if (fromOtherOS) {
+            fromOtherOS = false;
+            return;
+        }
+
         try {
             Thread.sleep(500);
         } catch (InterruptedException e) {
@@ -161,6 +168,8 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
                 System.out.println("Receive Text : " + transferable.getTransferData(DataFlavor.stringFlavor));
             }
+
+            this.fromOtherOS = true;
             this.clipboard.setContents(transferable, this);
         } catch (IOException | UnsupportedFlavorException e) {
             e.printStackTrace();
@@ -170,6 +179,8 @@ public class SyncSystemClipboard implements ClipboardOwner {
     private void initTimer() {
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
             try {
+                fromOtherOS = false;
+
                 Transferable transferable = this.clipboard.getContents(DataFlavor.stringFlavor);
 
                 if (transferable == null) {
