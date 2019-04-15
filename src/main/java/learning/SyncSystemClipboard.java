@@ -82,6 +82,8 @@ public class SyncSystemClipboard implements ClipboardOwner {
         if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
             try {
                 String text = (String) clipboard.getData(DataFlavor.stringFlavor);
+                StringSelection stringSelection = new StringSelection(text);
+                clipboard.setContents(stringSelection, this);
                 System.out.println("Copy Text : " + text);
 
                 this.sync(text.getBytes(Charset.forName("UTF-8")));
@@ -94,6 +96,7 @@ public class SyncSystemClipboard implements ClipboardOwner {
             try {
                 Image screenshot = (Image) clipboard.getData(DataFlavor.imageFlavor);
                 ImageTransferable imageTransferable = new ImageTransferable(screenshot);
+                clipboard.setContents(imageTransferable, this);
                 System.out.println("Copy Screenshot(md5:" + imageTransferable.getMd5() + ") : " + imageTransferable);
 
                 this.sync(imageTransferable.getBytes());
