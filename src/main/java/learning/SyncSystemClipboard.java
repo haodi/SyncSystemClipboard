@@ -40,7 +40,7 @@ public class SyncSystemClipboard implements ClipboardOwner {
     private Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
     private Object lastClipboard = null;
 
-    private boolean fromOtherOS = false;
+    private static String currentOSName = "";
 
     public static void main(String[] args) {
         if (args.length > 0) {
@@ -51,12 +51,12 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
         SyncSystemClipboard syncSystemClipboard = new SyncSystemClipboard();
 
-        String osName = System.getProperty("os.name");
+        currentOSName = System.getProperty("os.name");
 
-        System.out.println("Current OS :" + osName);
+        System.out.println("Current OS :" + currentOSName);
 
         // Mac系统通过定时的方式同步剪贴板（ClipboardOwner再Mac系统下不工作）
-        if (osName.startsWith(MAC)) {
+        if (isMacOs()) {
             System.out.println("Initializing monitor clipboard timer...");
 
             syncSystemClipboard.initTimer();
@@ -73,11 +73,6 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
     @Override
     public void lostOwnership(Clipboard clipboard, Transferable contents) {
-        if (fromOtherOS) {
-            fromOtherOS = false;
-            return;
-        }
-
         try {
             Thread.sleep(500);
         } catch (InterruptedException e) {
@@ -99,7 +94,6 @@ public class SyncSystemClipboard implements ClipboardOwner {
             try {
                 Image screenshot = (Image) contents.getTransferData(DataFlavor.imageFlavor);
                 ImageTransferable imageTransferable = new ImageTransferable(screenshot);
-
                 System.out.println("Copy Screenshot(md5:" + imageTransferable.getMd5() + ") : " + imageTransferable);
 
                 this.sync(imageTransferable.getBytes());
@@ -132,7 +126,7 @@ public class SyncSystemClipboard implements ClipboardOwner {
                     this.pasteToClipboard(bytes);
                 }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -148,8 +142,7 @@ public class SyncSystemClipboard implements ClipboardOwner {
                 byteArrayOutputStream.write(bytes, 0, length);
             }
             return byteArrayOutputStream.toByteArray();
-
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
@@ -157,7 +150,7 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
     private void pasteToClipboard(byte[] bytes) {
         try {
-            Transferable transferable = null;
+            Transferable transferable;
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
             if (image != null) {
                 transferable = new ImageTransferable(image);
@@ -169,9 +162,16 @@ public class SyncSystemClipboard implements ClipboardOwner {
                 System.out.println("Receive Text : " + transferable.getTransferData(DataFlavor.stringFlavor));
             }
 
-            this.fromOtherOS = true;
             this.clipboard.setContents(transferable, this);
-        } catch (IOException | UnsupportedFlavorException e) {
+
+            if (transferable instanceof StringSelection) {
+                lastClipboard = transferable.getTransferData(DataFlavor.stringFlavor);
+            }
+
+            if (transferable instanceof ImageTransferable) {
+                lastClipboard = ((ImageTransferable) transferable).getMd5();
+            }
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -179,8 +179,6 @@ public class SyncSystemClipboard implements ClipboardOwner {
     private void initTimer() {
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
             try {
-                fromOtherOS = false;
-
                 Transferable transferable = this.clipboard.getContents(DataFlavor.stringFlavor);
 
                 if (transferable == null) {
@@ -212,6 +210,10 @@ public class SyncSystemClipboard implements ClipboardOwner {
             }
 
         }, 0, 1000, TimeUnit.MILLISECONDS);
+    }
+
+    private static boolean isMacOs() {
+        return System.getProperty("os.name").startsWith(MAC);
     }
 }
 
