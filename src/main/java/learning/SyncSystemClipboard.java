@@ -1,10 +1,17 @@
 package learning;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.ClipboardOwner;
 import java.awt.datatransfer.DataFlavor;
@@ -17,6 +24,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -33,6 +41,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * @author lihaodi
  */
 public class SyncSystemClipboard implements ClipboardOwner {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SyncSystemClipboard.class);
+
     private static String IP;
     private final static int PORT = 4396;
     private final static String MAC = "Mac";
@@ -53,22 +63,22 @@ public class SyncSystemClipboard implements ClipboardOwner {
 
         currentOSName = System.getProperty("os.name");
 
-        System.out.println("Current OS :" + currentOSName);
+        LOGGER.info("Current OS : {}", currentOSName);
 
-        // Mac系统通过定时的方式同步剪贴板（ClipboardOwner再Mac系统下不工作）
+        // Mac系统通过定时的方式同步剪贴板（ClipboardOwner在Mac系统下不工作）
         if (isMacOs()) {
-            System.out.println("Initializing monitor clipboard timer...");
+            LOGGER.info("Initializing monitor clipboard timer...");
 
             syncSystemClipboard.initTimer();
         } else {
-            System.out.println("Initializing receive client ...");
+            LOGGER.info("Initializing receive client ...");
 
             new Thread(() -> syncSystemClipboard.initClient()).start();
         }
 
         new Thread(() -> syncSystemClipboard.initSocketServer()).start();
 
-        System.out.println("Initializing socket server on port " + PORT);
+        LOGGER.info("Initializing socket server on port " + PORT);
     }
 
     @Override
@@ -79,27 +89,45 @@ public class SyncSystemClipboard implements ClipboardOwner {
             e.printStackTrace();
         }
 
-        if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
-            try {
-                String text = (String) clipboard.getData(DataFlavor.stringFlavor);
-                StringSelection stringSelection = new StringSelection(text);
-                clipboard.setContents(stringSelection, this);
-                System.out.println("Copy Text : " + text);
+//        if (clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor)) {
+//            try {
+//                List<?> fileCopyList = this.convertObjectToList(contents.getTransferData(DataFlavor.javaFileListFlavor));
+//
+//                for (Object file : fileCopyList) {
+//                    File fileCopy = (File) file;
+//                    byte[] fileCopyBytes = Files.readAllBytes(fileCopy.toPath());
+//
+//                    LOGGER.info("Copy {} {}KB", fileCopy.getPath(), fileCopy.length() / 1024);
+//                    this.sync(fileCopy);
+//
+//                    return;
+//                }
+//            } catch (Exception e) {
+//                e.printStackTrace();
+//            }
+//        }
 
-                this.sync(text.getBytes(Charset.forName("UTF-8")));
+        if (clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)) {
+            try {
+                Image image = (Image) clipboard.getData(DataFlavor.imageFlavor);
+                ImageTransferable imageTransferable = new ImageTransferable(image);
+
+                LOGGER.info("Copy Screenshot : {}", image);
+
+                this.sync(imageTransferable.getImageBytes());
+
+                return;
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
-        if (clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)) {
+        if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
             try {
-                Image screenshot = (Image) clipboard.getData(DataFlavor.imageFlavor);
-                ImageTransferable imageTransferable = new ImageTransferable(screenshot);
-                clipboard.setContents(imageTransferable, this);
-                System.out.println("Copy Screenshot(md5:" + imageTransferable.getMd5() + ") : " + imageTransferable);
+                String text = (String) clipboard.getData(DataFlavor.stringFlavor);
+                LOGGER.info("Copy Text : {}", text);
 
-                this.sync(imageTransferable.getBytes());
+                this.sync(text.getBytes(Charset.forName("UTF-8")));
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -158,11 +186,11 @@ public class SyncSystemClipboard implements ClipboardOwner {
             if (image != null) {
                 transferable = new ImageTransferable(image);
 
-                System.out.println("Receive Screenshot : " + transferable);
+                LOGGER.info("Receive Screenshot : " + transferable);
             } else {
                 transferable = new StringSelection(new String(bytes, Charset.forName("UTF-8")));
 
-                System.out.println("Receive Text : " + transferable.getTransferData(DataFlavor.stringFlavor));
+                LOGGER.info("Receive Text : " + transferable.getTransferData(DataFlavor.stringFlavor));
             }
 
             this.clipboard.setContents(transferable, this);
@@ -182,31 +210,31 @@ public class SyncSystemClipboard implements ClipboardOwner {
     private void initTimer() {
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
             try {
-                Transferable transferable = this.clipboard.getContents(DataFlavor.stringFlavor);
 
-                if (transferable == null) {
-                    transferable = this.clipboard.getContents(DataFlavor.imageFlavor);
+                Transferable contents = this.clipboard.getContents(null);
+
+                if (contents == null) {
+                    return;
                 }
 
-                if (transferable != null) {
-                    if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)
-                            && !transferable.getTransferData(DataFlavor.stringFlavor).equals(lastClipboard)) {
-                        lastClipboard = transferable.getTransferData(DataFlavor.stringFlavor);
+                if (contents.isDataFlavorSupported(DataFlavor.imageFlavor)) {
+                    Image screenshot = (Image) contents.getTransferData(DataFlavor.imageFlavor);
+                    ImageTransferable imageTransferable = new ImageTransferable(screenshot);
 
-                        this.lostOwnership(this.clipboard, transferable);
-                        return;
+                    if (!imageTransferable.getMd5().equals(lastClipboard)) {
+                        lastClipboard = imageTransferable.getMd5();
+
+                        this.lostOwnership(this.clipboard, contents);
+                    }
+                }
+
+                if (contents.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                    Object clipboardData = contents.getTransferData(DataFlavor.stringFlavor);
+                    if (lastClipboard == null || (clipboardData.hashCode() != lastClipboard.hashCode())) {
+                        lastClipboard = clipboardData;
+                        this.lostOwnership(this.clipboard, contents);
                     }
 
-                    if (transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
-                        Image screenshot = (Image) transferable.getTransferData(DataFlavor.imageFlavor);
-                        ImageTransferable imageTransferable = new ImageTransferable(screenshot);
-
-                        if (!imageTransferable.getMd5().equals(lastClipboard)) {
-                            lastClipboard = imageTransferable.getMd5();
-
-                            this.lostOwnership(this.clipboard, transferable);
-                        }
-                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -218,15 +246,26 @@ public class SyncSystemClipboard implements ClipboardOwner {
     private static boolean isMacOs() {
         return System.getProperty("os.name").startsWith(MAC);
     }
+
+    private List<?> convertObjectToList(Object obj) {
+        List<?> list = new ArrayList<>();
+        if (obj.getClass().isArray()) {
+            list = Arrays.asList((Object[]) obj);
+        } else if (obj instanceof Collection) {
+            list = new ArrayList<>((Collection<?>) obj);
+        }
+        return list;
+    }
 }
 
 class ImageTransferable implements Transferable {
     private Image image;
+    private byte[] imageBytes;
     private String md5;
 
     ImageTransferable(Image image) {
         this.image = this.getImage(image);
-        this.md5 = DigestUtils.md5Hex(this.getBytes());
+        this.md5 = DigestUtils.md5Hex(this.image2bytes());
     }
 
     @Override
@@ -244,14 +283,18 @@ class ImageTransferable implements Transferable {
         return image;
     }
 
-    byte[] getBytes() {
+    byte[] image2bytes() {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
         try {
             ImageIO.write(((BufferedImage) image), "jpg", byteArrayOutputStream);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return byteArrayOutputStream.toByteArray();
+
+        imageBytes = byteArrayOutputStream.toByteArray();
+
+        return imageBytes;
     }
 
     public BufferedImage getImage(Image image) {
@@ -302,7 +345,7 @@ class ImageTransferable implements Transferable {
         return md5;
     }
 
-    public void setMd5(String md5) {
-        this.md5 = md5;
+    byte[] getImageBytes() {
+        return imageBytes;
     }
 }
